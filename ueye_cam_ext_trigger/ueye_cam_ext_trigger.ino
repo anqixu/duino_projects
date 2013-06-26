@@ -51,8 +51,8 @@ signals to multiple digital cameras. The code currently supports 2 modes:
 
 1-master-(N-1)-slaves: 1 camera is designated as master, and is set to free-run
   mode, where it captures images at a given rate. The flash output of the master
-  camera is enabled, and connected to CAM#_DIN_PIN of the Arduino-compatible
-  device. This trigger signal is replicated and emitted on all CAM#_DOUT_PINs,
+  camera is enabled, and connected to CAM#_DOUT_PIN of the Arduino-compatible
+  device. This trigger signal is replicated and emitted on all CAM#_DIN_PINs,
   which should be connected to the trigger inputs of the other (N-1) slave
   cameras. This way, by configuring the slave cameras to be in external
   (hardware) trigger mode, the master camera's exposure timing can be
@@ -83,20 +83,38 @@ as follows:
 
 UEye 1 Pin 5 (3.3V)     <--->     TinyLily Pin + (VCC)
 UEye 1 Pin 6 (GND)      <--->     TinyLily Pin - (GND)
-UEye 1 Pin 3 (DOUT)     <--->     TinyLily Pin a0
-UEye 1 Pin 4 (DIN)      <--->     TinyLily Pin 2
-UEye 2 Pin 3 (DOUT)     <--->     TinyLily Pin a1
-UEye 2 Pin 4 (DIN)      <--->     TinyLily Pin 3
-UEye 3 Pin 3 (DOUT)     <--->     TinyLily Pin a4
-UEye 3 Pin 4 (DIN)      <--->     TinyLily Pin 15 (MOSI) [pin 4 on 2x3 ICSP pad]
-UEye 4 Pin 3 (DOUT)     <--->     TinyLily Pin a5
-UEye 4 Pin 4 (DIN)      <--->     TinyLily Pin 16 (MISO) [pin 1 on 2x3 ICSP pad]
+UEye 1 Pin 3 (DIN)      <--->     TinyLily Pin a1
+UEye 1 Pin 4 (DOUT)     <--->     TinyLily Pin 2
+UEye 2 Pin 3 (DIN)      <--->     TinyLily Pin a4
+UEye 2 Pin 4 (DOUT)     <--->     TinyLily Pin 3
+UEye 3 Pin 3 (DIN)      <--->     TinyLily Pin a5
+UEye 3 Pin 4 (DOUT)     <--->     TinyLily Pin a0
+UEye 4 Pin 3 (DIN)      <--->     TinyLily Pin 11 (MOSI) [pin 4 on 2x3 ICSP pad]
+UEye 4 Pin 4 (DOUT)     <--->     TinyLily Pin 12 (MISO) [pin 1 on 2x3 ICSP pad]
 
-Note that the TinyLily's Pin 0 and Pin 1 are connected to the USB adapter's
-UART TX/RX lines. If the USB adapter is disconnected, then in theory Pin 0 and
-Pin 1 can be used to provide trigger synchronization for a 5th camera.
-This requires minor modifications to the code, to duplicate behavior for
-CAM5_DIN_PIN and CAM5_DOUT_PIN.
+--- WARNING: BELOW DOES NOT WORK (YET)! ---
+--- FOR SOME REASON PIN 0 AND/OR PIN 1 IS TOGGLING AT HIGH RATES EVEN WITH USB ADAPTER DISCONNECTED AND SERIAL DISCONNECTED
+
+*UEye 5 Pin 3 (DIN)*    <--->     TinyLily Pin 0 (RX)
+*UEye 5 Pin 4 (DOUT)*   <--->     TinyLily Pin 1 (TX)
+
+*: Note that the TinyLily's Pin 0 and Pin 1 are connected to the USB adapter's
+UART RX/TX lines. This code supports triggering 5 cameras on the TinyLily
+by doing the following:
+
+1. set "#define ENABLE_SERIAL 0" below line with "[MODIFY_BELOW_1]" text
+2. set "#define ENABLE_CAM5_P0_P1 1" below line with "[MODIFY_BELOW_2]" text
+3. connect the USB adapter board to the TinyLily
+4. (likely needed) disconnect Pin 0 and Pin 1 from any connections (e.g. camera 5)
+5. program the TinyLily via Arduino IDE
+6. disconnect the USB adapter board from the TinyLily
+7. connect Pin 0 and Pin 1 to camera 5's DIN and DOUT
+
+As seen from the instructions above, enabling triggering from camera 5 requires
+disabling the Serial API, since that would also make use of Pin 0 and Pin 1.
+Once again, it is crucial to disconnect the USB adapter board when camera 5
+is enabled, otherwise Pin 0 and Pin 1 would be held HIGH.
+--- WARNING: ABOVE DOES NOT WORK (YET)! ---
 
 As an implementational detail, it is useful to have the flash output emit
 active-high pulses, so that non-activated cameras will not dominate in
@@ -104,33 +122,37 @@ the OR-ed combined trigger signal. Also, because the UI-1246LE camera only
 supports falling-edge external trigger, the default behavior of
 ACTIVE_HIGH_NOT_MASTER_SLAVE is implemented as:
 
-CAM<i>_DOUT_PIN := NOR(CAM1_DIN_PIN, CAM2_DIN_PIN, ...) for i = 1, 2, ...
+CAM<i>_DIN_PIN := NOR(CAM1_DOUT_PIN, CAM2_DOUT_PIN, ...) for i = 1, 2, ...
 */
 
 
 // Parameters - Begin
+// [MODIFY_BELOW_1]
 #define ENABLE_SERIAL 1
 #define SERIAL_BAUD_RATE 57600
 #define SERIAL_MAX_CHARS_PER_LINE 1000
+#if ENABLE_SERIAL
+  // WARNING: DO NOT MODIFY BELOW
+  #define ENABLE_CAM5_P0_P1 0
+#else
+  // Can change to 1 to enable 5th camera [MODIFY_BELOW_2]
+  #define ENABLE_CAM5_P0_P1 0
+#endif
 
-#define CAM1_DIN_PIN A0
-#define CAM2_DIN_PIN A1
-#define CAM3_DIN_PIN A4
-#define CAM4_DIN_PIN A5
+#define CAM1_DIN_PIN A1
+#define CAM2_DIN_PIN A4
+#define CAM3_DIN_PIN A5
+#define CAM4_DIN_PIN 11
+#define CAM5_DIN_PIN 0
 #define CAM1_DOUT_PIN 2
 #define CAM2_DOUT_PIN 3
-#define CAM3_DOUT_PIN 15
-#define CAM4_DOUT_PIN 16
+#define CAM3_DOUT_PIN A0
+#define CAM4_DOUT_PIN 12
+#define CAM5_DOUT_PIN 1
 // Parameters - End
 
 
-enum {
-	ACTIVE_HIGH_NOT_MASTER_SLAVE,
-  ACTIVE_HIGH_MASTER_SLAVE,
-  ACTIVE_LOW_MANUAL_TRIGGER_SLAVES,
-  ACTIVE_HIGH_MANUAL_TRIGGER_SLAVES,
-};
-
+enum {ACTIVE_HIGH_NOT_MASTER_SLAVE, ACTIVE_HIGH_MASTER_SLAVE, ACTIVE_LOW_MANUAL_TRIGGER_SLAVES, ACTIVE_HIGH_MANUAL_TRIGGER_SLAVES};
 
 int mode = ACTIVE_HIGH_NOT_MASTER_SLAVE;
 unsigned long int manualTriggerRateMS = 66; // default 15Hz
@@ -141,39 +163,52 @@ int serialInputLength = 0;
 
 
 void setup() {
-  pinMode(CAM1_DIN_PIN, INPUT);
-  pinMode(CAM2_DIN_PIN, INPUT);
-  pinMode(CAM3_DIN_PIN, INPUT);
-  pinMode(CAM4_DIN_PIN, INPUT);
-  pinMode(CAM1_DOUT_PIN, OUTPUT);
-  pinMode(CAM2_DOUT_PIN, OUTPUT);
-  pinMode(CAM3_DOUT_PIN, OUTPUT);
-  pinMode(CAM4_DOUT_PIN, OUTPUT);
-  
-#if ENABLE_SERIAL
-  for (unsigned int i = 0; i < SERIAL_MAX_CHARS_PER_LINE+1; i++) { serialInput[i] = 0; }
-  Serial.begin(SERIAL_BAUD_RATE);
-  printPrompt();
-#endif
+  digitalWrite(CAM1_DOUT_PIN, LOW);
+  digitalWrite(CAM2_DOUT_PIN, LOW);
+  digitalWrite(CAM3_DOUT_PIN, LOW);
+  digitalWrite(CAM4_DOUT_PIN, LOW);
+  pinMode(CAM1_DOUT_PIN, INPUT);
+  pinMode(CAM2_DOUT_PIN, INPUT);
+  pinMode(CAM3_DOUT_PIN, INPUT);
+  pinMode(CAM4_DOUT_PIN, INPUT);
+  pinMode(CAM1_DIN_PIN, OUTPUT);
+  pinMode(CAM2_DIN_PIN, OUTPUT);
+  pinMode(CAM3_DIN_PIN, OUTPUT);
+  pinMode(CAM4_DIN_PIN, OUTPUT);
+  digitalWrite(CAM1_DIN_PIN, LOW);
+  digitalWrite(CAM2_DIN_PIN, LOW);
+  digitalWrite(CAM3_DIN_PIN, LOW);
+  digitalWrite(CAM4_DIN_PIN, LOW);
+
+  #if ENABLE_SERIAL != 0
+    for (unsigned int i = 0; i < SERIAL_MAX_CHARS_PER_LINE+1; i++) { serialInput[i] = 0; }
+    Serial.begin(SERIAL_BAUD_RATE);
+    printPrompt();
+  #else
+    #if ENABLE_CAM5_P0_P1 != 0
+      pinMode(CAM5_DOUT_PIN, INPUT);
+      pinMode(CAM5_DIN_PIN, OUTPUT);
+    #endif
+  #endif
 };
 
 
 void loop() {
   // Process incoming bytes from serial line
-#if ENABLE_SERIAL
-  if (Serial.available() > 0) {
-    byte incomingByte = Serial.read();
-    if (incomingByte == '\n' || incomingByte == '\r' || serialInputLength >= SERIAL_MAX_CHARS_PER_LINE) {
-      parseSerialInput();
-      if (serialInputLength > 0) {
-        printPrompt();
+  #if ENABLE_SERIAL != 0
+    if (Serial.available() > 0) {
+      byte incomingByte = Serial.read();
+      if (incomingByte == '\n' || incomingByte == '\r' || serialInputLength >= SERIAL_MAX_CHARS_PER_LINE) {
+        parseSerialInput();
+        if (serialInputLength > 0) {
+          printPrompt();
+        }
+        serialInputLength = 0;
+      } else {
+        serialInput[serialInputLength++] = incomingByte;
       }
-      serialInputLength = 0;
-    } else {
-      serialInput[serialInputLength++] = incomingByte;
     }
-  }
-#endif
+  #endif
 
   // Update digital output pins
   int dout = HIGH;
@@ -207,27 +242,42 @@ void loop() {
     break;
   }
   
-  digitalWrite(CAM1_DOUT_PIN, dout);
-  digitalWrite(CAM2_DOUT_PIN, dout);
-  digitalWrite(CAM3_DOUT_PIN, dout);
-  digitalWrite(CAM4_DOUT_PIN, dout);
+  digitalWrite(CAM1_DIN_PIN, dout);
+  digitalWrite(CAM2_DIN_PIN, dout);
+  digitalWrite(CAM3_DIN_PIN, dout);
+  digitalWrite(CAM4_DIN_PIN, dout);
+  #if ENABLE_SERIAL == 0
+  #if ENABLE_CAM5_P0_P1 != 0
+    digitalWrite(CAM5_DIN_PIN, dout);
+  #endif
+  #endif
 };
 
 
 int activeLowCombineDIN() { // a.k.a. AND(DIN_1, DIN_2, ...)
-  if (digitalRead(CAM1_DIN_PIN) == LOW) return LOW;
-  if (digitalRead(CAM2_DIN_PIN) == LOW) return LOW;
-  if (digitalRead(CAM3_DIN_PIN) == LOW) return LOW;
-  if (digitalRead(CAM4_DIN_PIN) == LOW) return LOW;
+  if (digitalRead(CAM1_DOUT_PIN) == LOW) return LOW;
+  if (digitalRead(CAM2_DOUT_PIN) == LOW) return LOW;
+  if (digitalRead(CAM3_DOUT_PIN) == LOW) return LOW;
+  if (digitalRead(CAM4_DOUT_PIN) == LOW) return LOW;
+  #if ENABLE_SERIAL == 0
+  #if ENABLE_CAM5_P0_P1 != 
+    if (digitalRead(CAM5_DOUT_PIN) == LOW) return LOW;
+  #endif
+  #endif
   return HIGH;
 };
 
 
 int activeHighCombineDIN() { // a.k.a. OR(DIN_1, DIN_2, ...)
-  if (digitalRead(CAM1_DIN_PIN) == HIGH) return HIGH;
-  if (digitalRead(CAM2_DIN_PIN) == HIGH) return HIGH;
-  if (digitalRead(CAM3_DIN_PIN) == HIGH) return HIGH;
-  if (digitalRead(CAM4_DIN_PIN) == HIGH) return HIGH;
+  if (digitalRead(CAM1_DOUT_PIN) == HIGH) return HIGH;
+  if (digitalRead(CAM2_DOUT_PIN) == HIGH) return HIGH;
+  if (digitalRead(CAM3_DOUT_PIN) == HIGH) return HIGH;
+  if (digitalRead(CAM4_DOUT_PIN) == HIGH) return HIGH;
+  #if ENABLE_SERIAL == 0
+  #if ENABLE_CAM5_P0_P1
+    if (digitalRead(CAM5_DOUT_PIN) == HIGH) return HIGH;
+  #endif
+  #endif
   return LOW;
 };
 
